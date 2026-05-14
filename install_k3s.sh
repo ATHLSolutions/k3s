@@ -1,31 +1,17 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 01-prepare.sh — VoiceAI k3s Single-Node Preparation Script
+# install_k3s.sh — k3s Single-Node Environment Setup
 #
 # What this script does:
-#   1. Install missing system packages (docker, python3, curl, git)
+#   1. Install missing system packages (curl, git, docker)
 #   2. Install k3s (if not already installed)
 #   3. Fix kubeconfig permissions for non-root access
-#   4. Set up Python venv for tooling
-#   5. Build all custom Docker images
-#   6. Distribute images (push to REGISTRY or import into k3s containerd)
-#   7. Generate image overlay for kustomize (registry/tag override)
-#   8. Generate secrets (.env.k3s + k3s/single-node/02-secrets.yaml)
-#   9. Print instructions for filling in API keys
 #
 # Usage:
-#   cd ~/voiceai
-#   chmod +x k3s/scripts/01-prepare.sh
+#   chmod +x install_k3s.sh
+#   ./install_k3s.sh
 #
-#   # Default: build + import local images into k3s containerd
-#   ./k3s/scripts/01-prepare.sh
-#
-#   # Build + push GHCR for reuse across k3s/k8s clusters
-#   GHCR_USERNAME=<github-username> GHCR_TOKEN=<github-pat> \
-#   REGISTRY=ghcr.io/<github-owner> IMAGE_TAG=v1 ./k3s/scripts/01-prepare.sh
-#
-# After this script succeeds, fill in the API keys in .env.k3s then run:
-#   ./k3s/scripts/02-deploy.sh
+# Supported OS: Debian 11+ / Ubuntu 20.04+
 # =============================================================================
 
 set -euo pipefail
@@ -37,22 +23,8 @@ ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
 
-# ── config (override via env) ─────────────────────────────────────────────────
-# Empty REGISTRY means local import mode (build then import to k3s containerd).
-# Example GHCR: REGISTRY=ghcr.io/<github-owner>
-REGISTRY="${REGISTRY:-}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
-
 # ── working directory ─────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-cd "$REPO_ROOT"
-info "Working directory: $REPO_ROOT"
-if [ -n "$REGISTRY" ]; then
-  info "Image mode: push to registry ($REGISTRY), tag=$IMAGE_TAG"
-else
-  info "Image mode: local import into k3s containerd, tag=$IMAGE_TAG"
-fi
+info "Working directory: $PWD"
 
 # =============================================================================
 # 1. SYSTEM PACKAGES
@@ -78,19 +50,6 @@ fi
 
 install_if_missing curl
 install_if_missing git
-install_if_missing python3
-install_if_missing pip3 python3-pip
-# python3-venv: 'import venv' succeeds out of the box on Debian/Ubuntu, but
-# 'python3 -m venv' fails without the python3.X-venv package because ensurepip
-# is missing. Check ensurepip directly.
-if ! python3 -c "import ensurepip" &>/dev/null 2>&1; then
-  PY_MM=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-  info "Installing python${PY_MM}-venv (ensurepip missing) ..."
-  sudo apt-get install -y "python${PY_MM}-venv" \
-    || sudo apt-get install -y python3-venv \
-    || error "Failed to install python venv package. Try: sudo apt-get install python${PY_MM}-venv"
-  ok "python${PY_MM}-venv installed"
-fi
 
 # ── helper: disable broken APT sources so apt-get update doesn't fatal-error ──
 _fix_broken_apt_sources() {
@@ -110,7 +69,7 @@ _fix_broken_apt_sources() {
         sudo find /etc/apt/sources.list.d/ -name "*.list" \
           -exec grep -lF "$host" {} \; 2>/dev/null \
           | while read -r f; do
-              sudo mv "$f" "${f}.bak-voiceai" \
+              sudo mv "$f" "${f}.bak-k3s" \
                 && warn "  Disabled broken repo file: $(basename "$f")"
             done
       done
@@ -145,21 +104,6 @@ else
   else
     warn "docker requires sudo for this session"
     DOCKER_CMD="sudo docker"
-  fi
-fi
-
-if [ -n "$REGISTRY" ]; then
-  info "Using external registry: $REGISTRY"
-  info "Make sure you are logged in: docker login $REGISTRY"
-
-  if [[ "$REGISTRY" == ghcr.io/* ]] && [ -n "${GHCR_TOKEN:-}" ]; then
-    GHCR_USERNAME="${GHCR_USERNAME:-${GITHUB_ACTOR:-}}"
-    [ -n "$GHCR_USERNAME" ] || error "GHCR_TOKEN is set but GHCR_USERNAME/GITHUB_ACTOR is missing"
-    info "Logging in to ghcr.io as $GHCR_USERNAME ..."
-    echo "$GHCR_TOKEN" | $DOCKER_CMD login ghcr.io -u "$GHCR_USERNAME" --password-stdin
-    ok "Authenticated to ghcr.io"
-  elif [[ "$REGISTRY" == ghcr.io/* ]]; then
-    warn "REGISTRY points to GHCR but GHCR_TOKEN is not set. Ensure 'docker login ghcr.io' was done before push."
   fi
 fi
 
@@ -211,21 +155,4 @@ fi
 # Verify kubectl works (k3s symlinks kubectl but may not be in PATH yet)
 kubectl get nodes || sudo k3s kubectl get nodes || error "kubectl cannot connect to k3s"
 
-# =============================================================================
-# 4. PYTHON VENV FOR TOOLING
-# =============================================================================
-info "=== Step 4: Python venv ==="
 
-VENV_DIR="$REPO_ROOT/.venv"
-if [ ! -f "$VENV_DIR/bin/activate" ]; then
-  info "Creating Python venv at $VENV_DIR ..."
-  python3 -m venv "$VENV_DIR"
-fi
-
-# shellcheck disable=SC1090
-source "$VENV_DIR/bin/activate"
-
-info "Installing Python tooling dependencies ..."
-pip install --quiet --upgrade pip
-pip install --quiet asyncpg redis nats-py
-ok "Python venv ready"

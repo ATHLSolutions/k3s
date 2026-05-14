@@ -1,6 +1,6 @@
-# VoiceAI — k3s Single-Node Setup
+# k3s Single-Node Setup
 
-Scripts to prepare and deploy the **VoiceAI** stack on a single-node [k3s](https://k3s.io/) cluster.
+Script to install and configure a single-node [k3s](https://k3s.io/) cluster on Debian/Ubuntu.
 
 ## Requirements
 
@@ -13,45 +13,16 @@ Scripts to prepare and deploy the **VoiceAI** stack on a single-node [k3s](https
 ## Quick Start
 
 ```bash
-cd ~/voiceai
-chmod +x k3s/scripts/01-prepare.sh
-
-# Default: build images locally and import into k3s containerd
-./k3s/scripts/01-prepare.sh
-```
-
-After the script completes, fill in your API keys in `.env.k3s`, then deploy:
-
-```bash
-./k3s/scripts/02-deploy.sh
-```
-
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `REGISTRY` | *(empty)* | Container registry URL. Empty = local import mode |
-| `IMAGE_TAG` | `latest` | Tag applied to all built images |
-| `GHCR_USERNAME` | *(empty)* | GitHub username for GHCR login |
-| `GHCR_TOKEN` | *(empty)* | GitHub PAT with `packages:write` scope |
-
-### Push to GitHub Container Registry (GHCR)
-
-```bash
-GHCR_USERNAME=<github-username> \
-GHCR_TOKEN=<github-pat> \
-REGISTRY=ghcr.io/<github-owner> \
-IMAGE_TAG=v1 \
-./k3s/scripts/01-prepare.sh
+chmod +x install_k3s.sh
+./install_k3s.sh
 ```
 
 ## What `install_k3s.sh` Does
 
-1. **System packages** — installs `curl`, `git`, `python3`, `pip3` via `apt-get`
+1. **System packages** — installs `curl`, `git` via `apt-get`
 2. **Docker** — installs via `https://get.docker.com`; falls back to `docker.io` package
 3. **k3s** — installs via `https://get.k3s.io` and waits for the node to be ready
 4. **kubeconfig** — sets `/etc/rancher/k3s/k3s.yaml` to mode `644` and exports `KUBECONFIG`
-5. **Python venv** — creates `.venv` and installs `asyncpg`, `redis`, `nats-py`
 
 ## Notes
 
