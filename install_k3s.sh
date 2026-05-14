@@ -208,8 +208,8 @@ if ! grep -q "KUBECONFIG.*k3s" ~/.bashrc 2>/dev/null; then
   ok "Added KUBECONFIG to ~/.bashrc"
 fi
 
-# Verify kubectl works
-kubectl get nodes || error "kubectl cannot connect to k3s"
+# Verify kubectl works (k3s symlinks kubectl but may not be in PATH yet)
+kubectl get nodes || sudo k3s kubectl get nodes || error "kubectl cannot connect to k3s"
 
 # =============================================================================
 # 4. PYTHON VENV FOR TOOLING
